@@ -31,9 +31,8 @@ public struct MessageParameter: Encodable {
    let messages: [Message]
    
 
-   // Functions the model can invoke in responses
-   // When non-empty, `stopSequences` will automatically include "</function_calls>", per Anthropic's API docs: https://docs.anthropic.com/claude/docs/functions-external-tools#function-calling-format
-   let functions: [Function]
+   // Tools the model can use in responses to the user (https://docs.anthropic.com/claude/docs/tool-use)
+   let tools: [ToolDefinition]
 
    /// The maximum number of tokens to generate before stopping.
    /// Note that our models may stop before reaching this maximum. This parameter only specifies the absolute maximum number of tokens to generate.
@@ -68,6 +67,21 @@ public struct MessageParameter: Encodable {
    /// In nucleus sampling, we compute the cumulative distribution over all the options for each subsequent token in decreasing probability order and cut it off once it reaches a particular probability specified by top_p. You should either alter temperature or top_p, but not both.
    let topP: Double?
    
+    enum CodingKeys: String, CodingKey {
+        case model
+        case messages
+        case maxTokens
+        case system
+        case tools
+        case metadata
+        case stopSequences
+        case stream
+        case temperature
+        case topK
+        case topP
+    }
+
+    
    public struct Message: Encodable {
       
       let role: String
@@ -162,130 +176,24 @@ public struct MessageParameter: Encodable {
       let userId: UUID
    }
     
-    public struct Function {
+    public struct ToolDefinition {
         let name: String
         let description: String
-        let parameters: [Parameter]
+        let parameters: JSONSchema
   
-        public init(name: String, description: String, parameters: [Parameter]) {
+        public init(name: String, description: String, parameters: JSONSchema) {
             self.name = name
             self.description = description
             self.parameters = parameters
         }
+    }
         
-        public struct Parameter {
-            let name: String
-            let type: ParamType
-            let description: String
-            
-            public init(name: String, type: ParamType, description: String) {
-                self.name = name
-                self.type = type
-                self.description = description
-            }
-            
-            public enum ParamType: String {
-                case string
-                case integer
-                case number
-            }
-
-            public func toXML() -> String {
-                return """
-                <parameter>
-                  <name>\(name)</name>
-                  <type>\(type)</type>
-                  <description>\(description)</description>
-                </parameter>
-                """
-            }
-        }
-        
-        public func toXML() -> String {
-            return """
-            <tool_description>
-              <tool_name>\(name)</tool_name>
-              <description>\(description)</description>
-              <parameters>
-                \(parameters.map { $0.toXML() }.joined(separator:"\n      "))
-              </parameters>
-            </tool_description>
-            """
-        }
-    }
-    
-    enum CodingKeys: String, CodingKey {
-        case model
-        case messages
-        case maxTokens
-        case system
-        case metadata
-        case stopSequences
-        case stream
-        case temperature
-        case topK
-        case topP
-    }
-    
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(model, forKey: .model)
-        try container.encode(messages, forKey: .messages)
-        try container.encode(maxTokens, forKey: .maxTokens)
-        try container.encode(stopSequences, forKey:  .stopSequences)
-        try container.encode(stream, forKey: .stream)
-
-        var systemStr = system ?? ""
-        if functions.count > 0 {
-            systemStr += toolsPreamble
-            systemStr += functions.compactMap { $0.toXML() }.joined(separator: "\n")
-        }
-        try container.encode(systemStr, forKey: .system)
-
-        if metadata != nil {
-            try container.encode(metadata, forKey: .metadata)
-        }
-
-        if temperature != nil {
-            try container.encode(temperature, forKey: .temperature)
-        }
-
-        if topK != nil {
-            try container.encode(topK, forKey: .topK)
-        }
-
-        if topP != nil {
-            try container.encode(topP, forKey: .topP)
-        }
-    }
-    
-    // as suggested by https://docs.anthropic.com/claude/docs/functions-external-tools
-    private let toolsPreamble = """
-        In this environment you have access to a set of tools you can use to answer the user's question.
-
-        You may call them like this:
-        <function_calls>
-        <invoke>
-        <tool_name>$TOOL_NAME</tool_name>
-        <parameters>
-        <$PARAMETER_NAME>$PARAMETER_VALUE</$PARAMETER_NAME>
-        ...
-        </parameters>
-        </invoke>
-        </function_calls>
-
-        Here are the tools available:
-        """
-    
-    
-   private static let functionCallStopSequence = "</function_calls>"
-
    public init(
       model: Model,
       messages: [Message],
       maxTokens: Int,
       system: String? = nil,
-      functions: [Function] = [],
+      tools: [ToolDefinition1],
       metadata: MetaData? = nil,
       stopSequences: [String] = [],
       stream: Bool = false,
@@ -295,7 +203,7 @@ public struct MessageParameter: Encodable {
    {
       self.model = model.value
       self.messages = messages
-      self.functions = functions
+      self.tools = tools
       self.maxTokens = maxTokens
       self.system = system
       self.metadata = metadata
@@ -310,4 +218,147 @@ public struct MessageParameter: Encodable {
           self.stopSequences.append(Self.functionCallStopSequence)
       }
    }
+}
+
+// TODO own file
+//
+//  JSONSchema.swift
+//
+//
+//  Created by Federico Vitale on 14/11/23.
+//
+// borrowed from https://github.com/rawnly/SwiftOpenAI
+
+import Foundation
+
+/// See the [guide](/docs/guides/gpt/function-calling) for examples, and the [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for documentation about the format.
+public struct JSONSchema: Codable, Equatable {
+    public let type: JSONType
+    public let properties: [String: Property]?
+    public let required: [String]?
+    public let pattern: String?
+    public let const: String?
+    public let enumValues: [String]?
+    public let multipleOf: Int?
+    public let minimum: Int?
+    public let maximum: Int?
+    
+    // OpenAI Docs says:
+    // To describe a function that accepts no parameters, provide the value {"type": "object", "properties": {}}.
+    public static let empty = JSONSchema(type: .object, properties: [:])
+    
+    private enum CodingKeys: String, CodingKey {
+        case type, properties, required, pattern, const
+        case enumValues = "enum"
+        case multipleOf, minimum, maximum
+    }
+    
+    public struct Property: Codable, Equatable {
+        public let type: JSONType
+        public let description: String?
+        public let format: String?
+        public let items: Items?
+        public let required: [String]?
+        public let pattern: String?
+        public let const: String?
+        public let enumValues: [String]?
+        public let multipleOf: Int?
+        public let minimum: Double?
+        public let maximum: Double?
+        public let minItems: Int?
+        public let maxItems: Int?
+        public let uniqueItems: Bool?
+        
+        public static func string(description: String?=nil, enumValues: [String]?=nil) -> Self {
+            return Property(type: .string, description: description, enumValues: enumValues)
+        }
+        
+        public static func boolean(description: String?=nil) -> Self {
+            return Property(type: .boolean, description: description)
+        }
+        
+        public static func number(description: String?=nil) -> Self {
+            return Property(type: .number, description: description)
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case type, description, format, items, required, pattern, const
+            case enumValues = "enum"
+            case multipleOf, minimum, maximum
+            case minItems, maxItems, uniqueItems
+        }
+        
+        public init(type: JSONType, description: String? = nil, format: String? = nil, items: Items? = nil, required: [String]? = nil, pattern: String? = nil, const: String? = nil, enumValues: [String]? = nil, multipleOf: Int? = nil, minimum: Double? = nil, maximum: Double? = nil, minItems: Int? = nil, maxItems: Int? = nil, uniqueItems: Bool? = nil) {
+            self.type = type
+            self.description = description
+            self.format = format
+            self.items = items
+            self.required = required
+            self.pattern = pattern
+            self.const = const
+            self.enumValues = enumValues
+            self.multipleOf = multipleOf
+            self.minimum = minimum
+            self.maximum = maximum
+            self.minItems = minItems
+            self.maxItems = maxItems
+            self.uniqueItems = uniqueItems
+        }
+    }
+
+    public enum JSONType: String, Codable {
+        case integer
+        case string
+        case boolean
+        case array
+        case object
+        case number
+        case `null` = "null"
+    }
+
+    public struct Items: Codable, Equatable {
+        public let type: JSONType
+        public let properties: [String: Property]?
+        public let pattern: String?
+        public let const: String?
+        public let enumValues: [String]?
+        public let multipleOf: Int?
+        public let minimum: Double?
+        public let maximum: Double?
+        public let minItems: Int?
+        public let maxItems: Int?
+        public let uniqueItems: Bool?
+
+        private enum CodingKeys: String, CodingKey {
+            case type, properties, pattern, const
+            case enumValues = "enum"
+            case multipleOf, minimum, maximum, minItems, maxItems, uniqueItems
+        }
+        
+        public init(type: JSONType, properties: [String : Property]? = nil, pattern: String? = nil, const: String? = nil, enumValues: [String]? = nil, multipleOf: Int? = nil, minimum: Double? = nil, maximum: Double? = nil, minItems: Int? = nil, maxItems: Int? = nil, uniqueItems: Bool? = nil) {
+            self.type = type
+            self.properties = properties
+            self.pattern = pattern
+            self.const = const
+            self.enumValues = enumValues
+            self.multipleOf = multipleOf
+            self.minimum = minimum
+            self.maximum = maximum
+            self.minItems = minItems
+            self.maxItems = maxItems
+            self.uniqueItems = uniqueItems
+        }
+    }
+    
+    public init(type: JSONType, properties: [String : Property]? = nil, required: [String]? = nil, pattern: String? = nil, const: String? = nil, enumValues: [String]? = nil, multipleOf: Int? = nil, minimum: Int? = nil, maximum: Int? = nil) {
+        self.type = type
+        self.properties = properties
+        self.required = required
+        self.pattern = pattern
+        self.const = const
+        self.enumValues = enumValues
+        self.multipleOf = multipleOf
+        self.minimum = minimum
+        self.maximum = maximum
+    }
 }

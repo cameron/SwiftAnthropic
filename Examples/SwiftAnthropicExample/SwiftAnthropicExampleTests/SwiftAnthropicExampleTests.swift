@@ -15,12 +15,15 @@ final class SwiftAnthropicExampleTests: XCTestCase {
     func testSimpleFunctionCall() async throws {
         // TODO this belongs in the package's test target, but i haven't been able to figure out
         // how to get xcode to actually run that target from this (example) project
+        
+        let tools = [MessageParameter.ToolDefinition(name: "consider_excerpt", description: "submits an excerpt to the user for reflection", parameters:
+                                            JSONSchema(type: .object,
+                                                                                                                                                       properties: ["excerpt": JSONSchema.Property(type: .string, description: "the text that the user will reflect on")])]
+
         let msg = MessageParameter(model: .claude2,
                                    messages: [MessageParameter.Message(role: .user, content: .text("What does the user think about an excerpt from your favorite myth or fable?"))],
                                    maxTokens: 4096,
-                                   functions: [
-                                    MessageParameter.Function(name: "consider_excerpt", description: "submits an excerpt to the user for reflection", parameters: [
-                                        MessageParameter.Function.Parameter(name: "excerpt", type: .string, description: "the text that the user will reflect on")])],
+                                   tools: tools,
                                    temperature: 0.99)
         
         let response = try await service.createMessage(msg)
