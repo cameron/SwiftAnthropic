@@ -10,35 +10,39 @@ import XCTest
 import SwiftAnthropic
 
 final class SwiftAnthropicExampleTests: XCTestCase {
-    private var service : AnthropicService = AnthropicServiceFactory.service(apiKey: "TODO friendly key inclusion")
+    private var service : AnthropicService = AnthropicServiceFactory.service(apiKey: "TODO")
 
     func testSimpleFunctionCall() async throws {
         // TODO this belongs in the package's test target, but i haven't been able to figure out
         // how to get xcode to actually run that target from this (example) project
         
-        let tools = [MessageParameter.ToolDefinition(name: "consider_excerpt", description: "submits an excerpt to the user for reflection", parameters:
-                                            JSONSchema(type: .object,
-                                                                                                                                                       properties: ["excerpt": JSONSchema.Property(type: .string, description: "the text that the user will reflect on")])]
+        let tools = [MessageParameter.ToolDefinition(
+            name: "get_weather",
+            description: "gets the weather for a given location",
+            parameters: JSONSchema(type: .object,
+                                   properties: ["location": JSONSchema.Property(type: .string, description: "The city and state, e.g., Portland, OR")]))
+            ]
 
-        let msg = MessageParameter(model: .claude2,
-                                   messages: [MessageParameter.Message(role: .user, content: .text("What does the user think about an excerpt from your favorite myth or fable?"))],
+        struct GetWeather: Decodable {
+            let location: String
+        }
+        
+        let msg = MessageParameter(model: .claude3Opus,
+                                   messages: [MessageParameter.Message(role: .user, content: .text("What is the weather like in New York City?"))],
                                    maxTokens: 4096,
                                    tools: tools,
-                                   temperature: 0.99)
+                                   temperature: 0.01)
         
         let response = try await service.createMessage(msg)
+        XCTAssertEqual(response.content.count, 2)
 
-        guard let (funcName, paramsJSONData) = try response.content.first?.functionCallsJSON().first else {
-            return XCTFail("unexpected response")
+        guard let data = response.content[1].input else {
+            return XCTFail("missing function argments")
         }
+        print("-------- \(try JSONSerialization.jsonObject(with: data, options: .allowFragments) as? [String: Any])")
 
-        XCTAssertEqual(funcName, "consider_excerpt")
-        
-        struct ConsiderExcerptResult: Decodable {
-            let excerpt: String
-        }
+        let gotWeather = try JSONDecoder().decode(GetWeather.self, from: data)
+        XCTAssertEqual(gotWeather.location, "New York City")
 
-        let result = try JSONDecoder().decode(ConsiderExcerptResult.self, from: paramsJSONData)
-        XCTAssertNotNil(result.excerpt)
     }
 }

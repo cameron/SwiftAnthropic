@@ -32,7 +32,7 @@ public struct MessageParameter: Encodable {
    
 
    // Tools the model can use in responses to the user (https://docs.anthropic.com/claude/docs/tool-use)
-   let tools: [ToolDefinition]
+   let tools: [ToolDefinition]?
 
    /// The maximum number of tokens to generate before stopping.
    /// Note that our models may stop before reaching this maximum. This parameter only specifies the absolute maximum number of tokens to generate.
@@ -79,6 +79,24 @@ public struct MessageParameter: Encodable {
         case temperature
         case topK
         case topP
+    }
+    
+    public struct ToolDefinition: Encodable {
+        let name: String
+        let description: String
+        let inputSchema: JSONSchema
+
+        enum CodingKeys: String, CodingKey {
+           case name
+           case description
+           case inputSchema
+        }
+
+        public init(name: String, description: String, parameters: JSONSchema) {
+            self.name = name
+            self.description = description
+            self.inputSchema = parameters
+        }
     }
 
     
@@ -176,24 +194,13 @@ public struct MessageParameter: Encodable {
       let userId: UUID
    }
     
-    public struct ToolDefinition {
-        let name: String
-        let description: String
-        let parameters: JSONSchema
-  
-        public init(name: String, description: String, parameters: JSONSchema) {
-            self.name = name
-            self.description = description
-            self.parameters = parameters
-        }
-    }
         
    public init(
       model: Model,
       messages: [Message],
       maxTokens: Int,
       system: String? = nil,
-      tools: [ToolDefinition1],
+      tools: [ToolDefinition]? = [],
       metadata: MetaData? = nil,
       stopSequences: [String] = [],
       stream: Bool = false,
@@ -212,13 +219,10 @@ public struct MessageParameter: Encodable {
       self.temperature = temperature
       self.topK = topK
       self.topP = topP
-
-      if self.functions.count > 0,
-         !self.stopSequences.contains(Self.functionCallStopSequence) {
-          self.stopSequences.append(Self.functionCallStopSequence)
-      }
    }
 }
+
+
 
 // TODO own file
 //

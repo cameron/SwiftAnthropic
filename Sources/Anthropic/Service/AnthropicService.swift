@@ -105,7 +105,7 @@ extension AnthropicService {
    public func fetch<T: Decodable>(
       type: T.Type,
       with request: URLRequest)
-      async throws -> T
+    async throws -> T
    {
       printCurlCommand(request)
       let (data, response) = try await session.data(for: request)

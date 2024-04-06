@@ -79,30 +79,37 @@ public struct MessageResponse: Decodable {
    public struct Content: Decodable {
       
       public let type: String
-      
-      public let text: String
-       
-       public var functionCalls: [FunctionCall] {
-           guard let range = text.range(of: "<function_calls>") else {
-               return []
-           }
-           return XMLFunctionCallsParser().parse(xml: String(text[range.lowerBound...]))
-       }
-       
-       // convenience for decoding into Codable structs
-       public func functionCallsJSON() throws  -> [(String, Data)] {
-           return try self.functionCalls.compactMap { funcName, params in
-               var paramDict = params.reduce(into: [String:String](), { ps, param in
-                   ps[param.0] = param.1
-               })
-               return (funcName, try JSONSerialization.data(withJSONObject:paramDict, options: .prettyPrinted))
-           }
-       }
+       public let input: Data?
+      public let text: String?
        
        public enum ParseError: Error {
            case failedGeneratingJSON([FunctionCall])
        }
-   }
+       
+       public enum CodingKeys: CodingKey {
+           case type
+           case text
+       }
+       
+       public init(from decoder: any Decoder) throws {
+           let container: KeyedDecodingContainer<MessageResponse.Content.CodingKeys> = try decoder.container(keyedBy: MessageResponse.Content.CodingKeys.self)
+           self.type = try container.decode(String.self, forKey: MessageResponse.Content.CodingKeys.type)
+
+           // self.input = ???
+           //
+           // @bcherry was hoping to get access to the raw data here for later decoding, but that seems impossible,
+           // and other approaches are not straightforward or hacky; spent several hours lmk if you have any ideas!
+           //
+           // a couple of things i tried:
+           //
+           // self.input = try container.decode(Data.self, forKey:...) -> throws an error "expected string but found dictionary"
+           //
+           // struct AnyCodable: Codable {}
+           // self.input = try container.decode([String: AnyCodable].self, forKey:...) not surprisingly fails to de/encode anything
+           
+           self.text = try container.decodeIfPresent(String.self, forKey: MessageResponse.Content.CodingKeys.text)
+       }
+    }
    
    public struct Usage: Decodable {
       

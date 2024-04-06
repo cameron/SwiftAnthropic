@@ -36,8 +36,8 @@ struct DefaultAnthropicService: AnthropicService {
    {
       var localParameter = parameter
       localParameter.stream = false
-      let request = try AnthropicAPI.messages.request(apiKey: apiKey, version: apiVersion, method: .post, params: localParameter, beta: "messages-2023-12-15")
-      return try await fetch(type: MessageResponse.self, with: request)
+      let request = try AnthropicAPI.messages.request(apiKey: apiKey, version: apiVersion, method: .post, params: localParameter, beta: "tools-2024-04-04")
+       return try await fetch(type: MessageResponse.self, with: request)
    }
    
    func streamMessage(
